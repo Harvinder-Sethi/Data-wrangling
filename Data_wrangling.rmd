@@ -1,0 +1,265 @@
+---
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+## Required packages 
+
+I have used the below packages and followed the requirement #10 basic readr package for reading datasets,dplr and magrittr for using pipes, imputation signs/symbols and plotting graphs like histograms and boxplots, tidyr for cleaning of  data, lubridate for date and time changes.
+
+```{r}
+# This is the R chunk for the required packages
+library(readr)
+library(dplyr)
+library(tidyr)
+library(magrittr)
+library(lubridate)
+```
+
+
+## Executive Summary 
+I have combined 2 datasets then filtered the data first as described in data section, checked for dimensions, structure od data, converted data types to its suitable typeslike factor, time. Then cleaned the data by uniting the dates, created a new column to show flight schedule including date and time, scan for missing, na, finite, infinite,nan and obvious errors and handled them carefully, checked for outliers and replaced them by capping. Used TAXI_IN variable to check the normality of its values using histogram and applied specific log and sqrt transformation to change it.
+
+## Data 
+
+To show, understand and fulfill the requirements of Data Wrangling techniques, I am using data from the U.S. Department of Transportation's (DOT) Bureau of Transportation Statistics tracks the on-time performance of domestic flights operated by large air carriers. Summary information on the number of on-time, delayed, canceled, and diverted flights is published in DOT's monthly Air Travel Consumer Report and in this dataset of 2015 flight delays and cancellations. Below is a brief description.
+
+Data Source:
+* https://www.kaggle.com/usdot/flight-delays
+
+The data is available in 3 files but i chose these 2:
+1. flights.csv
+2. airlines.csv
+
+### Flights.csv
+
+* YEAR - Year of the Flight Trip
+* MONTH - Month of the Flight Trip
+* DAY - Day of the Flight Trip
+* DAY_OF_WEEK - Day of the week of the Flight Trip
+* AIRLINE - Airline identifier
+* FLIGHT_NUMBER - Flight Identifier
+* TAIL_NUMBER - Aircraft Identifier
+* ORIGIN_AIRPORT - Starting Airport
+flights_airtime = 
+* DESTINATION_AIRPORT - Destination Airport
+* SCHEDULED_DEPARTURE - Planned Departure Time
+* DEPARTURE_TIME - WHEELS_OFF - TAXI_OUT
+* DEPARTURE_DELAY - Total Delay on Departure
+* TAXI_OUT - The time duration elapsed between departure from origin airport gate and wheels off
+* WHEELS_OFF - The time point that the aircraft's wheels leave the ground
+* SCHEDULED_TIME - Planned time amount needed for the flight trip
+* ELAPSED_TIME - AIR_TIME+TAXI_IN+TAXI_OUT
+* AIR_TIME - The time duration between wheels_off and wheels_on time
+* DISTANCE - Distance between two airports
+* WHEELS_ON - The time point that the aircraft's wheels touch on the ground
+* TAXI_IN - The time duration elapsed between wheels-on and gate arrival at the destination airport
+* SCHEDULED_ARRIVAL - Planned arrival time
+* ARRIVAL_TIME - WHEELS_ON+TAXI_IN
+* ARRIVAL_DELAY - ARRIVAL_TIME-SCHEDULED_ARRIVAL
+* DIVERTED - Aircraft landed on airport that out of schedule
+* CANCELLED - Flight Cancelled (1 = cancelled)
+* CANCELLATION_REASON - Reason for Cancellation of flight: A - Airline/Carrier; B - Weather; C - National Air System; D - Security
+* AIR_SYSTEM_DELAY - Delay caused by air system
+* SECURITY_DELAY - Delay caused by security
+* AIRLINE_DELAY - Delay caused by the airline
+* LATE_AIRCRAFT_DELAY - Delay caused by aircraft
+* WEATHER_DELAY - Delay caused by weather
+
+### Airlines.csv
+
+* IATA_CODE - Airline identifier
+* AIRLINE - Airport's name
+
+The flights.csv has huge number of observations. so for this assignment,i Uploaded Data using a faster baseR function called read_csv () then i have filtered Virgin America flights originating from Chicago O'Hare International Airport. I am ensuring that both cancelled and non-cancelled flight data is available(CANCELLED=0 and CANCELLED=1). The AIRLINE code for Virgin America is "VX" and Airport Identifier for Chicago O'Hare International Airport is "ORD". 
+Then, we look at the first 5 observations in each dataset. We then renamed some column names in flight and in airlines, merge flights data with airlines to get the name of the airline using the renamed variables AIRLINE_ID in flights and in airlines.While merging datasets we will only make use of LEFT_JOIN to avoid data loss from left master data of flights. [Fulfil #1]
+
+```{r}
+# This is the R chunk for the Data Section
+flights <- read_csv("flights.csv")
+flights %<>% filter(AIRLINE=="VX" & ORIGIN_AIRPORT=="ORD") 
+airlines <- read_csv("airlines.csv") 
+
+#view of both datasets 
+head(flights,5)
+head(airlines,5)
+
+#Renaming few Columns to avoid confusion after merging datasets and improve readability
+names(flights)[names(flights)=="AIRLINE"] <- "AIRLINE_ID"
+names(airlines)[names(airlines)=="IATA_CODE"] <- "AIRLINE_ID"
+names(airlines)[names(airlines)=="AIRLINE"] <- "AIRLINE_NAME"
+
+#Merging Flights and Airlines data
+combined<- flights %>% left_join(airlines, by = "AIRLINE_ID")
+head(combined,5)
+```
+
+## Understand 
+we can see the dimension of the data it is 168 rows and 32 columns. str() function tells us the structure of our data including the format of all variables and structure of data includes characters and numeric variables, however the DAY_OF_WEEK column is of type double() that we needed to convert to factor to make more sense as it had countable unique set of repetitive values. we will perform some type conversions to make the data more meaningful described below.
+(fulfil #2,#3,#4)
+
+**Time : **
+The variables that needs to be converted are SCHEDULED_DEPARTURE, DEPARTURE_TIME,  WHEELS_OFF,SCHEDULED_TIME,ELAPSED_TIME,AIR_TIME, WHEELS_ON, SCHEDULED_ARRIVAL, ARRIVAL_TIME. Firstly i made my custom function named formatting_time (where my assumption of time format is) to append : after 1st place if the no. of char == 3 using substr() , paste and sep= : otherwise, append : after 2nd place. so as we can look the values more clearly and finally converting it to hour min format using lubridate hm() function. Now we can easily fetch hour or minute using combined$SCHEDULED_DEPARTURE %>% hour(). so its easy for future use also and further calculations.
+
+**Factors : **
+Factors, ordered or unordered, are not only useful for statistical analysis and plotting but also brings efficiency in storage to a certain extent. In this data, DAY_OF_WEEK says Day of the week of the Flight Trip which is in numeric format from 1-7 but needs to be factored and labelled as "Mon","Tues","Wed","Thur","Fri","Sat","Sun" is factored, labelled and set ordered = True.
+CANCELLATION_REASON is also factored and ordered using Labels as "Airline/Carrier","Weather","National Air System","Security","NOT_CANCELLED" for respective levels "A","B","C","D","N" (IN Scan I OF THIS ASSIGNMENT) using factor() function from baseR .
+
+```{r}
+# This is the R chunk for the Understand Section
+
+#dimension checking
+dim(combined)
+
+#structure checking for each attribute
+str(combined)
+
+#Converted to ordered factor with levels and labels.
+combined$DAY_OF_WEEK  <- factor(combined$DAY_OF_WEEK, levels = c(1,2,3,4,5,6,7),
+                                labels= c("Mon","Tues","Wed","Thur","Fri","Sat","Sun"), ordered=TRUE)
+
+#append : after 1st place if ncahr=3, else append : after 2nd place and converting it to hour min format 
+formatting_time <- function(a) {
+      hm(ifelse(nchar(a) == 3 , paste(substr(a,start=1,stop=1) , substr(a,start=2,stop=3) , sep=":") ,
+                             paste(substr(a,start=1,stop=2) , substr(a,start=3,stop=4) , sep=":") ))
+}
+
+combined$SCHEDULED_DEPARTURE <- formatting_time(combined$SCHEDULED_DEPARTURE)
+combined$DEPARTURE_TIME <- formatting_time(combined$DEPARTURE_TIME)
+combined$WHEELS_OFF <- formatting_time(combined$WHEELS_OFF)
+combined$SCHEDULED_TIME <- formatting_time(combined$SCHEDULED_TIME)
+combined$ELAPSED_TIME <- formatting_time(combined$ELAPSED_TIME)
+combined$AIR_TIME <- formatting_time(combined$AIR_TIME)
+combined$WHEELS_ON <- formatting_time(combined$WHEELS_ON)
+combined$SCHEDULED_ARRIVAL <- formatting_time(combined$SCHEDULED_ARRIVAL)
+combined$ARRIVAL_TIME <- formatting_time(combined$ARRIVAL_TIME)
+
+#checking again for factor and time format changes
+str(combined)
+#Glimse of how all other above time variables look like
+head(combined,5)%>% select(SCHEDULED_DEPARTURE, DEPARTURE_TIME )
+
+```
+
+
+##	Tidy & Manipulate Data I 
+
+Our dataset contains DAY, YEAR, MONTH columns seperately which is very hard for further calculations and analysis and is generally considered to be untidy. we have used unite() function from tidyr package to combine them into 1 column and named it as DATE with "-" as seperator. Then we have converted its data type to DATE using baseR as.Date() function to make more sense of the column and ready for further use. The structure and dimensions seems to be changed for obvious reasons. (fulfill #5,#3)
+
+Note:- The format used here for DATE creation is provided using unite(data, col, ..., sep = "-") here the order of col passed is exactly how the Date is generated. I have use the standard ISO 8601 format (YY-MM-DD) as it is increasingly used for all-numeric dates.
+
+```{r}
+# This is the R chunk for the Tidy & Manipulate Data I 
+
+#combining YEAR, MONTH, DAY and naming as DATE using seperator as "-" and changing it to date format using as.date()
+combined %<>% unite(DATE,YEAR,MONTH,DAY, sep="-")
+combined$DATE <- as.Date(combined$DATE)
+str(combined)
+dim(combined)
+#Using head we can see the first 5 observations
+head(combined,5) 
+
+```
+
+##	Tidy & Manipulate Data II 
+
+We have the DATE and SCHEDULED_DEPARTURE in our combine dataset. I have combined both of them to display FLIGHTS_SCHEDULE which can be displayed together at flight tickets, online etc. I have used the mutate and paste function(As we are combining date and time which arent of the same type and used ymd_hms() function from lubridate to keep its data type as POSIXct date time type and any part of it year,month,day,hour,min can be used directly for further calculations). Using head we can see the first 5 observations (fulfill #6).
+
+```{r}
+# This is the R chunk for the Tidy & Manipulate Data II 
+combined %<>% mutate(FLIGHTS_SCHEDULE = ymd_hms(paste(combined$DATE,combined$SCHEDULED_DEPARTURE)))
+#showing the first 5 enteries to check flight schedule
+head(combined,5) %>% select(FLIGHTS_SCHEDULE)
+```
+
+##	Scan I 
+
+Firstly, I have checked for the total missing values in each column of our dataset, as we can see in CANCELLATION_REASON, AIR_SYSTEM_DELAY, SECURITY_DELAY, AIRLINE_DELAY, LATE_AIRCRAFT_DELAY, WEATHER_DELAY we can see more than 5% missing/NA's, hence we can not directly remove it, or replace it with mean(even more than 70% of our data is NA). However, we have to manually impute all as below. I have commented, above the code, for all Replacements/assumptions made for them.
+Then, I have checked for duplicate elements/rows, i have used dim(unique()) two baseR function, unique() returns a vector, data frame or array like x but with duplicate elements/rows removed, while its dim() will return its dimensions and we can compare with our original dataset, and we observed the dimensions are same so no duplicates.
+Then, I have checked for infinite (-inf or +inf) and nan values using sum(sapply()) funtion that returns the sum of infinite values if present, similarly for nan values. We observed there are none of them. (filfill #7)
+
+```{r}
+# This is the R chunk for the Scan I
+
+#cheking the columnwise sum of na's 
+colSums(is.na(combined))
+
+#If flights are not cancelled then no cancellation reason will be there so i am converting it to a factor with 5 levels including "N" as assumed level which means NOT_CANCELLED.
+combined$CANCELLATION_REASON <- factor(combined$CANCELLATION_REASON, levels = c("A","B","C","D","NA"),
+                                labels= c("Airline/Carrier","Weather","National Air System","Security","NOT_CANCELLED"), ordered=TRUE)
+
+combined$CANCELLATION_REASON[is.na(combined$CANCELLATION_REASON)] <- "NOT_CANCELLED"
+
+#If CANCELLATION_REASON= NOT_CANCELLED Then, we are assuming and imputing all NA values of AIR_SYSTEM_DELAY,SECURITY_DELAY,AIRLINE_DELAY,LATE_AIRCRAFT_DELAY,WEATHER_DELAY to "0".
+combined$AIR_SYSTEM_DELAY[is.na(combined$AIR_SYSTEM_DELAY)] <- 0
+combined$SECURITY_DELAY[is.na(combined$SECURITY_DELAY)] <- 0
+combined$AIRLINE_DELAY[is.na(combined$AIRLINE_DELAY)] <- 0
+combined$LATE_AIRCRAFT_DELAY[is.na(combined$LATE_AIRCRAFT_DELAY)] <- 0
+combined$WEATHER_DELAY[is.na(combined$WEATHER_DELAY)] <- 0
+
+#All other na values are less than 5% hence we omit it using na.omit()
+combined %<>% na.omit(combined)
+
+#cheking the columnwise sum of na's again finally
+colSums(is.na(combined))
+
+#There is same dimension data, so no duplicate elements observed.
+dim(unique(combined))
+
+# check infinite (-inf or +inf) and nan values and there are none of them.
+sum(sapply(combined,is.infinite))
+sum(sapply(combined, is.nan))
+```
+
+
+##	Scan II
+
+We will plot boxplot for outlier detection as it very easily shows us the outliers which are above and below min max values. We will exclude some variables because even though these are numerical, these are descriptive in nature you can see the description. Below are these:-
+FLIGHT_NUMBER, DIVERTED, CANCELLED, AIR_SYSTEM_DELAY, SECURITY_DELAY, AIRLINE_DELAY, WEATHER_DELAY.
+while DEPARTURE_DELAY, ARRIVAL_DELAY,TAXI_OUT, TAXI_IN was plotted, outliers were seen and we removed it using capping.The outliers will be replaced by nearest values that are not outliers. The lower bound outliers will be set to 5th percentile while the upper bound outliers will be set to 95th percentile. Using this technique we are preserving the distribution of each variable.(fulfill #8).
+
+```{r}
+# This is the R chunk for the Scan II
+#Plotting boxplots to see outliers
+combined$DEPARTURE_DELAY %>% boxplot(main="BoxPlot of Departure Delay",horizontal = TRUE,col="skyblue")
+combined$ARRIVAL_DELAY %>% boxplot(main="BoxPlot of Arrival Delay",horizontal = TRUE)
+combined$TAXI_OUT %>% boxplot(main="BoxPlot of TAXI_OUT",horizontal = TRUE,col="skyblue")
+combined$TAXI_IN %>% boxplot(main="BoxPlot of TAXI_IN",horizontal = TRUE)
+
+#Capping to remove outliers.
+cap_outliers <- function(x){
+    quantiles <- quantile( x, c(.05, 0.25, 0.75, .95 ),na.rm = TRUE )
+    x[ x < quantiles[2] - 1.5*IQR(x,na.rm = TRUE) ] <- quantiles[1]
+    x[ x > quantiles[3] + 1.5*IQR(x,na.rm = TRUE) ] <- quantiles[4]
+    x
+}
+combined$DEPARTURE_DELAY <-  cap_outliers(combined$DEPARTURE_DELAY)
+combined$ARRIVAL_DELAY <-  cap_outliers(combined$ARRIVAL_DELAY)
+combined$TAXI_OUT <-  cap_outliers(combined$TAXI_OUT)
+combined$TAXI_IN <-  cap_outliers(combined$TAXI_IN)
+
+# To check if the outliers have been capped.
+combined$DEPARTURE_DELAY %>% boxplot(main="BoxPlot of Departure Delay",horizontal = TRUE,col="skyblue")
+combined$ARRIVAL_DELAY %>% boxplot(main="BoxPlot of Arrival Delay",horizontal = TRUE)
+combined$TAXI_IN %>% boxplot(main="BoxPlot of TAXI_IN",horizontal = TRUE)
+
+```
+
+
+##	Transform 
+
+ I am using TAXI_IN variable to check the normally distributed or not or is skewed. since we can see its right skewed we can use sqrt, log, reciprocal etc. I am using sqrt and 2 time log to remove right skewness. we can see the histogram as nearly normally distributed now(fulfill #9).
+
+```{r}
+# This is the R chunk for the Transform Section
+combined$TAXI_IN %>% hist(main="Histogram of TAXI_OUT")
+#Applying sqrt and 2 times log transformation to remove right skewness.
+combined$TAXI_IN <- sqrt(combined$TAXI_IN)
+combined$TAXI_IN <- log(combined$TAXI_IN)
+combined$TAXI_IN <- log(combined$TAXI_IN)
+combined$TAXI_IN %>% hist(main="Histogram of TAXI_OUT")
+
+```
+<br>
+<br>
